@@ -1,8 +1,8 @@
 require 'rgl/base'
 require 'rgl/adjacency'
-require 'rgl/mutable'
-require 'rgl/dot'
-require 'rgl/connected_components'
+#require 'rgl/mutable'
+#require 'rgl/dot'
+#require 'rgl/connected_components'
 
 ############ constants
 FCG_FILENAME = 'mrd_fcg.fuzz'
@@ -12,8 +12,19 @@ ST_PRE = 'mrd_st_'
 ST_POST = '.fuzz'
 ET_PRE = 'mrd_et_'
 ET_POST = '.fuzz'
+RISKS = 'risks'
+#Risks Code
+RRec = 0;
+RLoop = 0;
+
 
 ## END OF CONSTANTS
+########## Global Variables
+risks = Hash.new	# weights
+frisk = Hash.new	# risk of each function
+srisk = Hash.new	# risk of each Statement
+brisk = Hash.new	# risk of each Branch -- Not If, each If has two branche
+## END OF VARIABLES
 ####################################################
 ############ classes
 class String
@@ -40,74 +51,52 @@ end
 ## END OF CLASSES
 ###############################################################################
 ############ functions
-def l(s)
-        if(@dolog == true)
-                puts (Time.new.strftime("%H:%M:%S") +": " + s.to_s).blue.bold
-        end
+def l(n,s)
+	space = ""
+	n.time{ space = space + "   " }
+	puts  ("#{Time.new.strftime("%H:%M:%S")}: #{space}" + s.to_s).blue.bold
 end
-def readargs
-	ARGV.each do|a|
-		if a.include? 'l'
-			@dolog = true
-		else
-		  	@dolog = false
-		end
-		if a.include? 'g'
-			@graph = true
-		else
-			@graph = false
-		end
-		if a.include? 'c'
-			@cyc = true
-		else
-			@cyc = false
-		end
+def readWeights
+	i=0
+	File.open(RISKS).each_line do |line|
+		ns = line.split
+		risks[ns[1]] = ns[2].to_i
+		i = i+1
 	end
-l "-----------------<<<START at  #{Time.new.strftime("%Y-%m-%d") }>>>--------------"
+	return i
 end
-
 def getFCG
 	dg = RGL::DirectedAdjacencyGraph[]
 	i=0
 	start = ""
 	File.open(FCG_FILENAME).each_line do |line|
 		ns = line.split
+		dg.add_edge ns[1], ns[2]
+		if i == 0 then start = ns[0]
+		i = i+1
+	end
+return dg,start,i
+end
+def loadSttType fname
+
+end
+def loadExpType fname
+
+end
+def saveResults
+
+end
+def getCFG fname
+	dg = RGL::DirectedAdjacencyGraph[]
+	i=0
+	start = ""
+	File.open(CFG_PRE + fname + CFG_POST).each_line do |line|
+		ns = line.split
 		dg.add_edge ns[0], ns[1]
 		if i == 0 then start = ns[0]
 		i = i+1
 	end
-l 'GRAPH CREATED'
-return dg,start
-end	
-def draw(dg,name)
-	if @graph == true
-		dg.write_to_graphic_file 'png',name
-l 'GRAP DRWANED'
-	end
-end
-
-def findCycles(dg)
-	components = dg.strongly_connected_components
-	toremove = Array.new
-	vs = components.comp_map.values.clone.sort
-	if(vs[0] != vs[1])then  toremove.push vs[0] end
-	if(vs[vs.size - 1] != vs[vs.size - 2 ]) then toremove.push vs[vs.size-1] end
-	if(vs.size > 2)
-		(vs.size - 2).times{ |i|
-			if(vs[i] != vs[i+1] && vs[i+1] != vs[i+2])
-				toremove.push vs[i+1]
-			end
-		}
-	end
-	cycles = Array.new
-	vs.uniq.each{ |v|
-		if !toremove.include? v
-			cycles.push components.comp_map.select{ |k2,v2| v2==v}.keys
-		end
-	}
-
-	l "CYCLES FOUND count: #{cycles.size}"
-	return cycles
+return dg,start,i
 end
 def sortDAG (s , a , dg , r ,  b)
         b.push s
@@ -124,19 +113,53 @@ def sortDAG (s , a , dg , r ,  b)
         b.pop
 end
 def analyseFun func
-	
+	cfg,cfgh,allins = getCFG func
+	l 2,"CFG created successfully. Total #{allins} edges";
+	sttType = loadSttType func
+	l 2,"Statement types loaded successfully. Total #{sttType.size} statement";
+	expType = loadExpType func
+	l 2,"Expression types loaded successfully. Total #{expType.size} expression";
+	instrs = Array.new
+	tmp = Array.new
+	loop = Array.new
+	sortDAG cfgh,instrs,cfg,loops,tmp
+	l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loops.size} loops";
+	inum = 1;
+	instrs.each { |ins|
+		if inum % 100 == 0 then l 2,"#{inum}/#{instrs.size} statement proceed."
+		srisk[ins] = risk[sttType[ins]];
+		if loops.includes? ins then srisk[ins] = srisk[ins] + risk[RLoop] end
+		if expType.keys.includes? ins) then
+			expType.select { |k,v| k == ins }.map {|k,v| v}.each{ |v|
+				srisk[ins] = risk[sttType[v]];
+			}
+		end
+	}
+	l 2,"#{inum}/#{instrs.size} statement proceed."
 end
 def analyse
-	readargs
-	fcg,fcgh = getFCG
-	draw fcg,'fcg'
+	l 0,"Start at  #{Time.new.strftime("%Y-%m-%d") }"
+	allrisk = readWeights
+	l 1,"risks loaded successfully, Total #{allrisk} nodes";
+	fcg,fcgh,allfuncs = getFCG
+	l 1,"FCG created successfully. Total #{allfuncs} edges";
 	functions = Array.new
 	tmp = Array.new
 	recs = Array.new
 	sortDAG fcgh,functions,fcg,recs,tmp
+	l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense";
+	fnum = 1;
 	functions.each { |func|
+		l 1,"Processing Function: #{func} (#{fnum}/#{func.size})";
+		frisk[func] = 0;
+		if recs.includes? func then frisk[func] = frisk[func] + risk[RRec] end
 		analyseFun func
+		l 1,"Function Done: #{func}";
 	}
+	l 1,"Processing Function: #{func} (#{fnum}/#{func.size})";
+	saveResults
+	l 1,"Results saved to file.";
+	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
 ## END OF FUNCTIONS
 ###############################################################################
