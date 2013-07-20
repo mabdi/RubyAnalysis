@@ -1,8 +1,14 @@
-require 'rgl/base'
-require 'rgl/adjacency'
-#require 'rgl/mutable'
-#require 'rgl/dot'
-#require 'rgl/connected_components'
+# IN THE NAME OF ALLAH
+#
+#
+#
+#
+#
+#
+
+
+
+
 
 ############ constants
 #file names
@@ -14,20 +20,21 @@ ST_POST = '.fuzz'
 ET_PRE = 'mrd_et_'
 ET_POST = '.fuzz'
 RISKS = 'risks'
+SYS_FUN = 'frisks'
 BRANCHES = 'branches'
 #Risks Code
-RRec = 0;
-RLoop = 0;
+RREC = "1000"
+RLOOP = "1001"
 #stt Id
-VALLIF = 0;
-VALLCALL = 0;
+VALLIF = 20
+VALLCALL = 701
 
 ## END OF CONSTANTS
 ########## Global Variables
-risks = Hash.new	# weights
-frisk = Hash.new	# risk of each function
-srisk = Hash.new	# risk of each Statement
-brisk = Hash.new	# risk of each Branch -- Not If, each If has two branche
+@risks = Hash.new	# weights
+@frisk = Hash.new	# risk of each function
+@srisk = Hash.new	# risk of each Statement
+@brisk = Hash.new	# risk of each Branch -- Not If, each If has two branche
 ## END OF VARIABLES
 ####################################################
 ############ classes
@@ -51,32 +58,61 @@ def bg_gray;        "\033[47m#{self}\033[0m" end
 def bold;           "\033[1m#{self}\033[22m" end
 def reverse_color;  "\033[7m#{self}\033[27m" end
 end
-
+class Graph
+	def add_edge (a,b)
+		@edges.push [a,b]
+	end
+	def initialize
+		@edges = Array.new
+	end
+	def edges
+		return @edges
+	end
+	def n_out s
+		return @edges.select { |u,v| u == s }.map {|u,v| v}
+	end
+	def n_in d
+		return @edges.select { |u,v| v == d }.map {|u,v| u}
+	end
+end
 ## END OF CLASSES
 ###############################################################################
 ############ functions
+def d(s)
+	puts  ("#{Time.new.strftime("%H:%M:%S")} " + s.to_s).brown.bold
+end
 def l(n,s)
 	space = ""
-	n.time{ space = space + "   " }
-	puts  ("#{Time.new.strftime("%H:%M:%S")}: #{space}" + s.to_s).blue.bold
+	n.times{ space = space + "   " }
+	puts  ("#{Time.new.strftime("%H:%M:%S")} #{space}" + s.to_s).blue.bold
+end
+def e(n,s)
+	space = ""
+	n.times{ space = space + "   " }
+	puts  ("#{Time.new.strftime("%H:%M:%S")} #{space}" + s.to_s).red.bold
 end
 def readWeights
 	i=0
-	File.open(RISKS).each_line do |line|
+	File.open(RISKS).each_line { |line|
 		ns = line.split
-		risks[ns[1]] = ns[2].to_i
+		@risks[ns[0]] = ns[1].to_i
 		i = i+1
-	end
+	}
+	File.open(SYS_FUN).each_line { |line|
+		ns = line.split
+		@frisk[ns[0]] = ns[1].to_i
+		i = i+1
+	}
 	return i
 end
 def getFCG
-	dg = RGL::DirectedAdjacencyGraph[]
+	dg = Graph.new
 	i=0
 	start = ""
 	File.open(FCG_FILENAME).each_line do |line|
 		ns = line.split
 		dg.add_edge ns[1], ns[2]
-		if i == 0 then start = ns[0]
+		if i == 0 then start = ns[1] end
 		i = i+1
 	end
 return dg,start,i
@@ -99,23 +135,23 @@ def loadExpType fname
 
 end
 def saveResults
-	File.open(BRANCHES, 'w') {|f| f.write(brisk.to_a.map { |k,v| "#{k} #{v}"}.join("\r\n")) }
+	File.open(BRANCHES, 'w') {|f| f.write(@brisk.to_a.map { |k,v| "#{k} #{v}"}.join("\r\n")) }
 end
 def getCFG fname
-	dg = RGL::DirectedAdjacencyGraph[]
+	dg = Graph.new
 	i=0
 	start = ""
 	File.open(CFG_PRE + fname + CFG_POST).each_line do |line|
 		ns = line.split
 		dg.add_edge ns[0], ns[1]
-		if i == 0 then start = ns[0]
+		if i == 0 then start = ns[0] end
 		i = i+1
 	end
 return dg,start,i
 end
 def sortDAG (s , a , dg , r ,  b)
         b.push s
-        nx = dg.edges.select { |e| e.source == s }.map {|e| e.target}
+        nx = dg.n_out s    
         nx.each { |n|
                 if a.include? n then next end
                 if b.include? n  then
@@ -129,66 +165,81 @@ def sortDAG (s , a , dg , r ,  b)
 end
 def analyseFun func
 	cfg,cfgh,allins = getCFG func
-	l 2,"CFG created successfully. Total #{allins} edges";
+	l 2,"CFG created successfully. Total #{allins} edges"
 	sttType = loadSttType func
-	l 2,"Statement types loaded successfully. Total #{sttType.size} statement";
+	l 2,"Statement types loaded successfully. Total #{sttType.size} statement"
 	expType = loadExpType func
-	l 2,"Expression types loaded successfully. Total #{expType.size} expression";
+	l 2,"Expression types loaded successfully. Total #{expType.size} expression"
 	instrs = Array.new
 	tmp = Array.new
 	loop = Array.new
-	sortDAG cfgh,instrs,cfg,loops,tmp
-	l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loops.size} loops";
+	sortDAG cfgh,instrs,cfg,loop,tmp
+	l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loop.size} loops"
 	inum = 1;
-	instrs.each { |ins|
-		if inum % 100 == 0 then l 2,"#{inum}/#{instrs.size} statement proceed."
-		srisk[ins] = risk[sttType[ins]];
-		if loops.includes? ins then srisk[ins] = srisk[ins] + risk[RLoop] end
-		if expType.keys.includes? ins then
-			expType.select { |k,v| k == ins }.values.each{ |v|
-				srisk[ins] = srisk[ins] + risk[sttType[v][0]];
-				if sttType[v][0] == VALLCALL then
-					srisk[ins] = srisk[ins] + frisk[sttType[v][1]];
+	instrs.each do |ins|
+		if inum % 100 == 0 then l 2,"#{inum}/#{instrs.size} statement proceed." end
+		@srisk[ins] = @risks[sttType[ins]];
+		if loop.include? ins then @srisk[ins] = @srisk[ins] + @risks[RLOOP] end
+		if expType.keys.include? ins then
+			expType.select { |k,v| k == ins }.values.each do |v|
+				@srisk[ins] = @srisk[ins] + @risks[v[0]];
+				if v[0] == VALLCALL then
+					@srisk[ins] = @srisk[ins] + @frisk[v[1]];
 				end
-			}
+			end
 		end
-		childs = cfg.edges.select{|u,v| u == ins}.map{|v| v.target,srisk[v.target]}
+		childs = cfg.edges.select{|u,v| u == ins}.map{|u,v| [v,@srisk[v]] }
 		case sttType[ins]
-			when VALLIF:
-				srisk[ins] = srisk[ins] + childs.max[1]
-				childs.each { |c,r|
-					brisk[c] = r;
-				}
+			when VALLIF
+				@srisk[ins] = @srisk[ins] + childs.max[1]
+				childs.each { |c,r| @brisk[c] = r }
 			else
-				childs.each{ |c,r|
-					srisk[ins] = srisk[ins] + r
-				}
+				childs.each{ |c,r| 
+
+d r
+d r.class
+
+@srisk[ins] = @srisk[ins] + r }
 		end
-	}
+	end
 	l 2,"#{inum}/#{instrs.size} statement proceed."
 end
 def analyse
-	l 0,"Start at  #{Time.new.strftime("%Y-%m-%d") }"
+	l 0,"Start (#{Time.new.strftime("%Y-%m-%d") } #{Time.new.strftime("%H:%M:%S")})"
 	allrisk = readWeights
-	l 1,"risks loaded successfully, Total #{allrisk} nodes";
+	l 1,"risks loaded successfully, Total #{allrisk} nodes"
 	fcg,fcgh,allfuncs = getFCG
-	l 1,"FCG created successfully. Total #{allfuncs} edges";
+	l 1,"FCG created successfully. Total #{allfuncs} edges"
 	functions = Array.new
 	tmp = Array.new
 	recs = Array.new
 	sortDAG fcgh,functions,fcg,recs,tmp
-	l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense";
-	fnum = 1;
-	functions.each { |func|
-		l 1,"Processing Function: #{func} (#{fnum}/#{func.size})";
-		frisk[func] = 0;
-		if recs.includes? func then frisk[func] = frisk[func] + risk[RRec] end
+	l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense"
+	fnum = 0
+	functions.each do |func|
+		fnum = fnum + 1
+		if @frisk.keys.include? func then
+			if File.file? "#{ST_PRE}#{func}#{ST_POST}" then
+				e 1,"Anomaly: Function '#{func}' is a system function or a user function that is processed."
+				l 2,"We skip this Function '#{func}'"
+			end
+			next
+		else
+			if !File.file? "#{ST_PRE}#{func}#{ST_POST}" then
+				e 1,"Anomaly: Function '#{func}' is not a system function and not a user function??"
+				e 2,"We skip this Function '#{func}'"
+				next
+			end
+		end
+		l 1,"Processing Function: #{func} (#{fnum}/#{func.size})"
+		@frisk[func] = 0;
+		if recs.include? func then @frisk[func] = @frisk[func] + @risk[RREC] end
 		analyseFun func
-		l 1,"Function Done: #{func}";
-	}
-	l 1,"Processing Function: #{func} (#{fnum}/#{func.size})";
+		l 1,"Function Done: #{func}"
+	end
+	l 1,"Processing Function: #{func} (#{fnum}/#{func.size})"
 	saveResults
-	l 1,"Results saved to file #{BRANCHES}.";
+	l 1,"Results saved to file #{BRANCHES}."
 	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
 ## END OF FUNCTIONS
