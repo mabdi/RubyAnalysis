@@ -26,8 +26,8 @@ BRANCHES = 'branches'
 RREC = "1000"
 RLOOP = "1001"
 #stt Id
-VALLIF = 20
-VALLCALL = 701
+VALLIF = "20"
+VALLCALL = "701"
 
 ## END OF CONSTANTS
 ########## Global Variables
@@ -175,8 +175,9 @@ def analyseFun func
 	loop = Array.new
 	sortDAG cfgh,instrs,cfg,loop,tmp
 	l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loop.size} loops"
-	inum = 1;
+	inum = 0;
 	instrs.each do |ins|
+		inum = inum +1;
 		if inum % 100 == 0 then l 2,"#{inum}/#{instrs.size} statement proceed." end
 		@srisk[ins] = @risks[sttType[ins]];
 		if loop.include? ins then @srisk[ins] = @srisk[ins] + @risks[RLOOP] end
@@ -184,22 +185,27 @@ def analyseFun func
 			expType.select { |k,v| k == ins }.values.each do |v|
 				@srisk[ins] = @srisk[ins] + @risks[v[0]];
 				if v[0] == VALLCALL then
+					if @frisk[v[1]].nil? then
+						e 3,"Function '#{v[1]}' is not present in frisk"
+						abort "Prereqirements not met."
+					end
 					@srisk[ins] = @srisk[ins] + @frisk[v[1]];
 				end
 			end
 		end
-		childs = cfg.edges.select{|u,v| u == ins}.map{|u,v| [v,@srisk[v]] }
+=begin
+Note: Action of removing edges that make a cycle in graph. 
+Here I suppose that if a child of a node has not processed yet, so its a cycle edge.
+I dont know it covers all cases.
+a formal proof maybe is needed.
+=end
+		childs = cfg.edges.select{|u,v| u == ins && !@srisk[v].nil?}.map{|u,v|  [v,@srisk[v]] }
 		case sttType[ins]
 			when VALLIF
 				@srisk[ins] = @srisk[ins] + childs.max[1]
 				childs.each { |c,r| @brisk[c] = r }
 			else
-				childs.each{ |c,r| 
-
-d r
-d r.class
-
-@srisk[ins] = @srisk[ins] + r }
+				childs.each{ |c,r| @srisk[ins] = @srisk[ins] + r }
 		end
 	end
 	l 2,"#{inum}/#{instrs.size} statement proceed."
@@ -231,13 +237,13 @@ def analyse
 				next
 			end
 		end
-		l 1,"Processing Function: #{func} (#{fnum}/#{func.size})"
+		l 1,"Processing Function: #{func} (#{fnum}/#{functions.size})"
 		@frisk[func] = 0;
 		if recs.include? func then @frisk[func] = @frisk[func] + @risk[RREC] end
 		analyseFun func
-		l 1,"Function Done: #{func}"
+		l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
 	end
-	l 1,"Processing Function: #{func} (#{fnum}/#{func.size})"
+d @brisk
 	saveResults
 	l 1,"Results saved to file #{BRANCHES}."
 	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
