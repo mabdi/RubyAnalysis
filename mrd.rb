@@ -5,6 +5,7 @@ require 'rgl/adjacency'
 #require 'rgl/connected_components'
 
 ############ constants
+#file names
 FCG_FILENAME = 'mrd_fcg.fuzz'
 CFG_PRE = 'mrd_cfg_'
 CFG_POST = '.fuzz'
@@ -13,10 +14,13 @@ ST_POST = '.fuzz'
 ET_PRE = 'mrd_et_'
 ET_POST = '.fuzz'
 RISKS = 'risks'
+BRANCHES = 'branches'
 #Risks Code
 RRec = 0;
 RLoop = 0;
-
+#stt Id
+VALLIF = 0;
+VALLCALL = 0;
 
 ## END OF CONSTANTS
 ########## Global Variables
@@ -78,13 +82,24 @@ def getFCG
 return dg,start,i
 end
 def loadSttType fname
-
+	sttType = Hash.new
+	File.open("#{ST_PRE}#{fname}#{ST_POST}").each_line do |line|
+		ns = line.split
+		sttType[ ns[0]]= ns[1]
+	end
+	return sttType
 end
 def loadExpType fname
+	expType = Hash.new
+	File.open("#{ET_PRE}#{fname}#{ET_POST}").each_line do |line|
+		ns = line.split
+		expType[ ns[0]]= ns[1] , ns[2]
+	end
+	return expType
 
 end
 def saveResults
-
+	File.open(BRANCHES, 'w') {|f| f.write(brisk.to_a.map { |k,v| "#{k} #{v}"}.join("\r\n")) }
 end
 def getCFG fname
 	dg = RGL::DirectedAdjacencyGraph[]
@@ -129,10 +144,25 @@ def analyseFun func
 		if inum % 100 == 0 then l 2,"#{inum}/#{instrs.size} statement proceed."
 		srisk[ins] = risk[sttType[ins]];
 		if loops.includes? ins then srisk[ins] = srisk[ins] + risk[RLoop] end
-		if expType.keys.includes? ins) then
-			expType.select { |k,v| k == ins }.map {|k,v| v}.each{ |v|
-				srisk[ins] = risk[sttType[v]];
+		if expType.keys.includes? ins then
+			expType.select { |k,v| k == ins }.values.each{ |v|
+				srisk[ins] = srisk[ins] + risk[sttType[v][0]];
+				if sttType[v][0] == VALLCALL then
+					srisk[ins] = srisk[ins] + frisk[sttType[v][1]];
+				end
 			}
+		end
+		childs = cfg.edges.select{|u,v| u == ins}.map{|v| v.target,srisk[v.target]}
+		case sttType[ins]
+			when VALLIF:
+				srisk[ins] = srisk[ins] + childs.max[1]
+				childs.each { |c,r|
+					brisk[c] = r;
+				}
+			else
+				childs.each{ |c,r|
+					srisk[ins] = srisk[ins] + r
+				}
 		end
 	}
 	l 2,"#{inum}/#{instrs.size} statement proceed."
@@ -158,7 +188,7 @@ def analyse
 	}
 	l 1,"Processing Function: #{func} (#{fnum}/#{func.size})";
 	saveResults
-	l 1,"Results saved to file.";
+	l 1,"Results saved to file #{BRANCHES}.";
 	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
 ## END OF FUNCTIONS
