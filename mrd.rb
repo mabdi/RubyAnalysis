@@ -21,7 +21,7 @@ ET_PRE = 'mrd_et_'
 ET_POST = '.fuzz'
 RISKS = 'risks'
 SYS_FUN = 'frisks'
-BRANCHES = 'branches'
+BRANCHES = 'brancheRisks'
 #Risks Code
 RREC = "1000"
 RLOOP = "1001"
@@ -202,7 +202,7 @@ a formal proof maybe is needed.
 		childs = cfg.edges.select{|u,v| u == ins && !@srisk[v].nil?}.map{|u,v|  [v,@srisk[v]] }
 		case sttType[ins]
 			when VALLIF
-				@srisk[ins] = @srisk[ins] + childs.max[1]
+				@srisk[ins] = @srisk[ins] + childs.map{|a| a[1]}.max
 				childs.each { |c,r| @brisk[c] = r }
 			else
 				childs.each{ |c,r| @srisk[ins] = @srisk[ins] + r }
@@ -239,7 +239,7 @@ def analyse
 		end
 		l 1,"Processing Function: #{func} (#{fnum}/#{functions.size})"
 		@frisk[func] = 0;
-		if recs.include? func then @frisk[func] = @frisk[func] + @risk[RREC] end
+		if recs.include? func then @frisk[func] = @frisk[func] + @risks[RREC] end
 		analyseFun func
 		l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
 	end
