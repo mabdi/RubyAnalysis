@@ -7,7 +7,7 @@
 #
 
 require 'mrdbg'
-
+require 'consolor'
 
 
 ############ constants
@@ -41,26 +41,6 @@ VALLCALL = "701"
 ## END OF VARIABLES
 ####################################################
 ############ classes
-class String
-def black;          "\033[30m#{self}\033[0m" end
-def red;            "\033[31m#{self}\033[0m" end
-def green;          "\033[32m#{self}\033[0m" end
-def  brown;         "\033[33m#{self}\033[0m" end
-def blue;           "\033[34m#{self}\033[0m" end
-def magenta;        "\033[35m#{self}\033[0m" end
-def cyan;           "\033[36m#{self}\033[0m" end
-def gray;           "\033[37m#{self}\033[0m" end
-def bg_black;       "\033[40m#{self}\0330m"  end
-def bg_red;         "\033[41m#{self}\033[0m" end
-def bg_green;       "\033[42m#{self}\033[0m" end
-def bg_brown;       "\033[43m#{self}\033[0m" end
-def bg_blue;        "\033[44m#{self}\033[0m" end
-def bg_magenta;     "\033[45m#{self}\033[0m" end
-def bg_cyan;        "\033[46m#{self}\033[0m" end
-def bg_gray;        "\033[47m#{self}\033[0m" end
-def bold;           "\033[1m#{self}\033[22m" end
-def reverse_color;  "\033[7m#{self}\033[27m" end
-end
 class Graph
 	def add_edge (a,b)
 		@edges.push [a,b]
@@ -84,19 +64,6 @@ end
 ## END OF CLASSES
 ###############################################################################
 ############ functions
-def d(s)
-	puts  ("#{Time.new.strftime("%H:%M:%S")} " + s.to_s).brown.bold
-end
-def l(n,s)
-	space = ""
-	n.times{ space = space + "   " }
-	puts  ("#{Time.new.strftime("%H:%M:%S")} #{space}" + s.to_s).blue.bold
-end
-def e(n,s)
-	space = ""
-	n.times{ space = space + "   " }
-	puts  ("#{Time.new.strftime("%H:%M:%S")} #{space}" + s.to_s).red.bold
-end
 def readWeights
 	i=0
 	File.open(RISKS).each_line { |line|
@@ -181,16 +148,16 @@ def sortDAG (startNode , sorted , graph , r ,  b)
 end
 def analyseFun func
 	cfg,cfgh,allins = getCFG func
-	l 2,"CFG created successfully. Total #{allins} edges"
+	@m.l 2,"CFG created successfully. Total #{allins} edges"
 	sttType = loadSttType func
-	l 2,"Statement types loaded successfully. Total #{sttType.size} statement"
+	@m.l 2,"Statement types loaded successfully. Total #{sttType.size} statement"
 	expType = loadExpType func
-	l 2,"Expression types loaded successfully. Total #{expType.size} expression"
+	@m.l 2,"Expression types loaded successfully. Total #{expType.size} expression"
 	instrs = Array.new
 	tmp = Array.new
 	loop = Array.new
 	sortDAG cfgh,instrs,cfg,loop,tmp
-	l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loop.size} loops"
+	@m.l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loop.size} loops"
 	inum = 0;
 	instrs.each do |ins|
 		inum = inum +1;
@@ -202,7 +169,7 @@ def analyseFun func
 				@srisk[ins] = @srisk[ins] + @risks[v[0]];
 				if v[0] == VALLCALL then
 					if @frisk[v[1]].nil? then
-						e 3,"Function '#{v[1]}' is not present in frisk"
+						@m.e 3,"Function '#{v[1]}' is not present in frisk"
 						abort "Prereqirements not met."
 					end
 					@srisk[ins] = @srisk[ins] + @frisk[v[1]];
@@ -224,51 +191,51 @@ a formal proof maybe is needed.
 				childs.each{ |c,r| @srisk[ins] = @srisk[ins] + r }
 		end
 	end
-	l 2,"#{inum}/#{instrs.size} statement proceed."
+	@m.l 2,"#{inum}/#{instrs.size} statement proceed."
 end
 @m = Mrdbg.new
 def analyse
-	l 0,"Start (#{Time.new.strftime("%Y-%m-%d") } #{Time.new.strftime("%H:%M:%S")})"
+	@m.l 0,"Start (#{Time.new.strftime("%Y-%m-%d") } #{Time.new.strftime("%H:%M:%S")})"
 	allrisk = readWeights
-	l 1,"risks loaded successfully, Total #{allrisk} nodes"
+	@m.l 1,"risks loaded successfully, Total #{allrisk} nodes"
 	fcg,fcgh,allfuncs = getFCG
-	l 1,"FCG created successfully. Total #{allfuncs} edges"
+	@m.l 1,"FCG created successfully. Total #{allfuncs} edges"
 	functions = Array.new
 	tmp = Array.new
 	recs = Array.new
 	sortDAG fcgh,functions,fcg,recs,tmp
-	l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense"
+	@m.l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense"
 #@m.b binding
 	fnum = 0
 	functions.each do |func|
 		fnum = fnum + 1
 		if @frisk.keys.include? func then
 			if File.file? "#{ST_PRE}#{func}#{ST_POST}" then
-				e 1,"Anomaly: Function '#{func}' is a system function or a user function that is processed."
-				l 2,"We skip this Function '#{func}'"
+				@m.e 1,"Anomaly: Function '#{func}' is a system function or a user function that is processed."
+				@m.l 2,"We skip this Function '#{func}'"
 				@anomals.push func
 			end
 			next
 		else
 			if !File.file? "#{ST_PRE}#{func}#{ST_POST}" then
-				e 1,"Anomaly: Function '#{func}' is not a system function and not a user function??"
-				e 2,"We skip this Function '#{func}'"
+				@m.e 1,"Anomaly: Function '#{func}' is not a system function and not a user function??"
+				@m.e 2,"We skip this Function '#{func}'"
 				@anomals.push func
 				next
 			end
 		end
-		l 1,"Processing Function: #{func} (#{fnum}/#{functions.size})"
+		@m.l 1,"Processing Function: #{func} (#{fnum}/#{functions.size})"
 		@frisk[func] = 0;
 		if recs.include? func then @frisk[func] = @frisk[func] + @risks[RREC] end
 		analyseFun func
-		l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
+		@m.l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
 	end
 #@m.d @brisk
 (@m.d @anomals.each{|s| puts "#{s} 1"}) if (!ARGV[0].nil? && (ARGV[0].include? 'a'))
 	saveResults
 @m.b binding
-	l 1,"Results saved to file #{BRANCHES}."
-	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
+	@m.l 1,"Results saved to file #{BRANCHES}."
+	@m.l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
 ## END OF FUNCTIONS
 ###############################################################################
