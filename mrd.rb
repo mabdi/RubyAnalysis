@@ -6,7 +6,7 @@
 #
 #
 
-
+require 'mrdbg'
 
 
 
@@ -22,9 +22,10 @@ ET_POST = '.fuzz'
 RISKS = 'risks'
 SYS_FUN = 'frisks'
 BRANCHES = 'brancheRisks'
+BMAP = 'mrd_branches_mapping'
 #Risks Code
-RREC = "1000"
-RLOOP = "1001"
+RREC = '1000'
+RLOOP = '1001'
 #stt Id
 VALLIF = "20"
 VALLCALL = "701"
@@ -35,6 +36,8 @@ VALLCALL = "701"
 @frisk = Hash.new	# risk of each function
 @srisk = Hash.new	# risk of each Statement
 @brisk = Hash.new	# risk of each Branch -- Not If, each If has two branche
+@bmap = Hash.new	# mapping from InstrId to bId
+@anomals = Array.new	# function names that is not in frisk function
 ## END OF VARIABLES
 ####################################################
 ############ classes
@@ -74,6 +77,9 @@ class Graph
 	def n_in d
 		return @edges.select { |u,v| v == d }.map {|u,v| u}
 	end
+	def has? x
+		return @edges.flatten.include? x
+	end
 end
 ## END OF CLASSES
 ###############################################################################
@@ -105,6 +111,15 @@ def readWeights
 	}
 	return i
 end
+def readBmap
+        i=0
+        File.open(BMAP).each_line { |line|
+                ns = line.split
+                @bmap[ns[0]] = ns[2].to_i
+                i = i+1
+        }
+        return i
+end
 def getFCG
 	dg = Graph.new
 	i=0
@@ -112,9 +127,9 @@ def getFCG
 	File.open(FCG_FILENAME).each_line do |line|
 		ns = line.split
 		dg.add_edge ns[1], ns[2]
-		if i == 0 then start = ns[1] end
 		i = i+1
 	end
+	if dg.has? "main" then start = "main" else e 2,"No 'main' node exists."; abort "Exiting..." end
 return dg,start,i
 end
 def loadSttType fname
@@ -135,7 +150,8 @@ def loadExpType fname
 
 end
 def saveResults
-	File.open(BRANCHES, 'w') {|f| f.write(@brisk.to_a.map { |k,v| "#{k} #{v}"}.join("\r\n")) }
+	readBmap
+	File.open(BRANCHES, 'w') {|f| f.write(@brisk.to_a.map { |k,v| "#{@bmap[k]} #{v}"}.join("\r\n")) }
 end
 def getCFG fname
 	dg = Graph.new
@@ -149,18 +165,18 @@ def getCFG fname
 	end
 return dg,start,i
 end
-def sortDAG (s , a , dg , r ,  b)
-        b.push s
-        nx = dg.n_out s    
+def sortDAG (startNode , sorted , graph , r ,  b)
+        b.push startNode
+        nx = graph.n_out startNode   
         nx.each { |n|
-                if a.include? n then next end
+                if sorted.include? n then next end
                 if b.include? n  then
-                        r.push s
+                        r.push startNode
                         next
                 end
-                sortDAG n , a , dg , r , b
+                sortDAG n , sorted , graph , r , b
         }
-        a.push s
+        sorted.push startNode
         b.pop
 end
 def analyseFun func
@@ -196,7 +212,7 @@ def analyseFun func
 =begin
 Note: Action of removing edges that make a cycle in graph. 
 Here I suppose that if a child of a node has not processed yet, so its a cycle edge.
-I dont know it covers all cases.
+I dont know it covers all cases. because we scan down to top a sorted list.
 a formal proof maybe is needed.
 =end
 		childs = cfg.edges.select{|u,v| u == ins && !@srisk[v].nil?}.map{|u,v|  [v,@srisk[v]] }
@@ -210,6 +226,7 @@ a formal proof maybe is needed.
 	end
 	l 2,"#{inum}/#{instrs.size} statement proceed."
 end
+@m = Mrdbg.new
 def analyse
 	l 0,"Start (#{Time.new.strftime("%Y-%m-%d") } #{Time.new.strftime("%H:%M:%S")})"
 	allrisk = readWeights
@@ -221,6 +238,7 @@ def analyse
 	recs = Array.new
 	sortDAG fcgh,functions,fcg,recs,tmp
 	l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense"
+#@m.b binding
 	fnum = 0
 	functions.each do |func|
 		fnum = fnum + 1
@@ -228,12 +246,14 @@ def analyse
 			if File.file? "#{ST_PRE}#{func}#{ST_POST}" then
 				e 1,"Anomaly: Function '#{func}' is a system function or a user function that is processed."
 				l 2,"We skip this Function '#{func}'"
+				@anomals.push func
 			end
 			next
 		else
 			if !File.file? "#{ST_PRE}#{func}#{ST_POST}" then
 				e 1,"Anomaly: Function '#{func}' is not a system function and not a user function??"
 				e 2,"We skip this Function '#{func}'"
+				@anomals.push func
 				next
 			end
 		end
@@ -243,8 +263,10 @@ def analyse
 		analyseFun func
 		l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
 	end
-d @brisk
+#@m.d @brisk
+(@m.d @anomals.each{|s| puts "#{s} 1"}) if (!ARGV[0].nil? && (ARGV[0].include? 'a'))
 	saveResults
+@m.b binding
 	l 1,"Results saved to file #{BRANCHES}."
 	l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
