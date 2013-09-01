@@ -30,6 +30,7 @@ RLOOP = '1001'
 VALLIF = "20"
 VALLCALL = "701"
 
+
 ## END OF CONSTANTS
 ########## Global Variables
 @risks = Hash.new	# weights
@@ -43,10 +44,16 @@ VALLCALL = "701"
 ############ classes
 class Graph
 	def add_edge (a,b)
+		@nodes.push a unless @nodes.include? a
+		@nodes.push b unless @nodes.include? b
 		@edges.push [a,b]
 	end
 	def initialize
+		@nodes = Array.new
 		@edges = Array.new
+	end
+	def size
+		return @nodes.size
 	end
 	def edges
 		return @edges
@@ -60,6 +67,37 @@ class Graph
 	def has? x
 		return @edges.flatten.include? x
 	end
+	def to_dot fname
+		strdot = "digraph mrd {\n"
+		@nodes.each{|n| strdot = "#{strdot}\n    #{n} [\n        fontsize = 8,\n        label = #{n}\n    ]\n" }
+		@edges.each{|a,b| strdot = "#{strdot}\n    #{a} -> #{b} [\n        fontsize = 8\n    ]\n"}
+		strdot = "#{strdot}\n}"
+		File.open("#{fname}.dot", 'w') {|f| f.write(strdot) }
+	end
+	def heads
+		hs = Array.new
+		@nodes.each{ |n|
+			hs.push (n) if @edges.select{|u,v| v == n}.size == 0
+		}
+		return hs
+	end
+	def head
+		hs = heads
+		abort("No or more than one Head in graph") unless hs.size == 1
+		return hs[0]
+	end
+	def tails
+                ts = Array.new
+                @nodes.each{ |n|
+                        ts.push (n) if @edges.select{|u,v| u == n}.size == 0
+                }
+                return ts          
+        end
+        def tail
+		ts = tails
+                abort("No or more than one Head in graph") unless ts.size == 1
+                return ts[0]
+        end
 end
 ## END OF CLASSES
 ###############################################################################
@@ -82,7 +120,7 @@ def readBmap
         i=0
         File.open(BMAP).each_line { |line|
                 ns = line.split
-                @bmap[ns[0]] = ns[2].to_i
+                @bmap[ns[0]] = ns[1].to_i
                 i = i+1
         }
         return i
@@ -147,6 +185,7 @@ def sortDAG (startNode , sorted , graph , r ,  b)
         b.pop
 end
 def analyseFun func
+	retVal=0
 	cfg,cfgh,allins = getCFG func
 	@m.l 2,"CFG created successfully. Total #{allins} edges"
 	sttType = loadSttType func
@@ -157,6 +196,7 @@ def analyseFun func
 	tmp = Array.new
 	loop = Array.new
 	sortDAG cfgh,instrs,cfg,loop,tmp
+	(@m.e 0, "size mismatches .... #{func} ";cfg.to_dot "cfg_#{func}") if cfg.size != instrs.size
 	@m.l 2,"CFG sorted successfully. Total #{instrs.size} Nodes and #{loop.size} loops"
 	inum = 0;
 	instrs.each do |ins|
@@ -186,13 +226,16 @@ a formal proof maybe is needed.
 		case sttType[ins]
 			when VALLIF
 				@srisk[ins] = @srisk[ins] + childs.map{|a| a[1]}.max
-				childs.each { |c,r| @brisk[c] = r }
+				childs.each { |c,r| @brisk[c] = r;@temp.push "#{ins} #{c}" }
 			else
 				childs.each{ |c,r| @srisk[ins] = @srisk[ins] + r }
 		end
+		retVal = @srisk[ins];
 	end
 	@m.l 2,"#{inum}/#{instrs.size} statement proceed."
+ 	return retVal
 end
+@temp = Array.new
 @m = Mrdbg.new
 def analyse
 	@m.l 0,"Start (#{Time.new.strftime("%Y-%m-%d") } #{Time.new.strftime("%H:%M:%S")})"
@@ -204,6 +247,7 @@ def analyse
 	tmp = Array.new
 	recs = Array.new
 	sortDAG fcgh,functions,fcg,recs,tmp
+        (@m.e 0, "FCG size mismatches ....  ";fcg.to_dot "fcg") if fcg.size != functions.size
 	@m.l 1,"FCG sorted successfully. Total #{functions.size} Nodes and #{recs.size} Recurense"
 #@m.b binding
 	fnum = 0
@@ -227,17 +271,18 @@ def analyse
 		@m.l 1,"Processing Function: #{func} (#{fnum}/#{functions.size})"
 		@frisk[func] = 0;
 		if recs.include? func then @frisk[func] = @frisk[func] + @risks[RREC] end
-		analyseFun func
+		@frisk[func] = @frisk[func] + analyseFun func
 		@m.l 1,"Function Done: #{func} (#{fnum}/#{functions.size})"
 	end
 #@m.d @brisk
 (@m.d @anomals.each{|s| puts "#{s} 1"}) if (!ARGV[0].nil? && (ARGV[0].include? 'a'))
 	saveResults
-@m.b binding
+@m.b (binding) if @dbg
 	@m.l 1,"Results saved to file #{BRANCHES}."
 	@m.l 0,"Finish at  #{Time.new.strftime("%Y-%m-%d") }"
 end
 ## END OF FUNCTIONS
 ###############################################################################
 ########## main
+@dbg = (!ARGV[0].nil? && (ARGV[0].include? 'd'))
 analyse
